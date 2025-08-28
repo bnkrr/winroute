@@ -20,7 +20,7 @@ The project is heavily dependent on Gemini. For instance, this README is generat
 
 ```sh
 # Replace with your actual module path
-go get github.com/your-username/winroute
+go get github.com/bnkrr/winroute
 ```
 
 ### Getting Routes
@@ -133,7 +133,3 @@ wroute delete-one -d 10.20.0.0/16 -n 192.168.1.254 -i 15
 # WARNING: Use filters with caution.
 wroute delete -i 15
 ```
-
-## License
-
-This project is licensed under the MIT License.
