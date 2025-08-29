@@ -1,4 +1,5 @@
-// main.go
+//go:build windows
+
 package main
 
 import (
@@ -8,7 +9,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github/bnkrr/winroute"
+	"github.com/bnkrr/winroute"
 
 	"github.com/spf13/cobra"
 )

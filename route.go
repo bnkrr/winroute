@@ -1,3 +1,5 @@
+//go:build windows
+
 // Package winroute 提供了一个现代化、用户友好的接口来操作 Windows 路由表。
 // 它建立在 wireguard/winipcfg 之上，封装了底层的复杂性，
 // 提供了信息聚合和便捷的操作功能。

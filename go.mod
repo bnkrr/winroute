@@ -1,4 +1,4 @@
-module github/bnkrr/winroute
+module github.com/bnkrr/winroute
 
 go 1.24
 
