@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/bnkrr/winroute/internal/routeops"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 )
@@ -208,19 +209,14 @@ func DeleteRoutes(opts ...any) (partialErrs []error, err error) {
 		return nil, nil
 	}
 
-	// deletedCount 和 partialErrs 已在命名返回值中声明
-	for _, route := range routes {
-		if delErr := route.Delete(); delErr != nil {
-			wrappedErr := fmt.Errorf("failed to delete route (dest: %s, iface: %s): %w", route.Destination, route.Interface.Alias, delErr)
-			if errorAction == ErrorActionStop {
-				// 对于 StopOnError，我们将错误作为主错误返回
-				return nil, wrappedErr
-			}
-			// 对于 ContinueOnError，我们将错误添加到部分错误列表中
-			partialErrs = append(partialErrs, wrappedErr)
-		}
-	}
-
-	// 在 ContinueOnError 模式下，即使 partialErrs 不为空，主错误也为 nil
-	return partialErrs, nil
+	return routeops.DeleteRoutes(
+		routes,
+		func(route *Route) error {
+			return route.Delete()
+		},
+		func(route *Route) string {
+			return fmt.Sprintf("dest: %s, iface: %s", route.Destination, route.Interface.Alias)
+		},
+		routeops.ErrorAction(errorAction),
+	)
 }

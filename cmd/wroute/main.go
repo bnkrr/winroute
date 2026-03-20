@@ -4,7 +4,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"io"
 	"net/netip"
 	"os"
 	"text/tabwriter"
@@ -22,6 +22,8 @@ var rootCmd = &cobra.Command{
 the functionalities of the winroute package, allowing you to get, add,
 and delete routes on a Windows system.`,
 }
+
+var stderr io.Writer = os.Stderr
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
@@ -199,12 +201,15 @@ At least one filter must be specified to prevent accidental deletion of all rout
 			allOpts = append(allOpts, winroute.ErrorActionStop)
 		}
 
-		// Now, perform the deletion
-		_, err := winroute.DeleteRoutes(allOpts...)
+		partialErrs, err := winroute.DeleteRoutes(allOpts...)
 		if err != nil {
-			// This happens for fatal errors or if StopOnError is used
-			log.Printf("A fatal error occurred during deletion: %v", err)
 			return err
+		}
+		if len(partialErrs) > 0 {
+			for _, partialErr := range partialErrs {
+				fmt.Fprintln(stderr, partialErr)
+			}
+			return fmt.Errorf("deleted routes with %d errors", len(partialErrs))
 		}
 
 		return nil // On success, print nothing.

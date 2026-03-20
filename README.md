@@ -24,7 +24,8 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
-	"winroute"
+
+	"github.com/bnkrr/winroute"
 )
 
 func main() {
