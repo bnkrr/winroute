@@ -3,9 +3,9 @@ module github.com/bnkrr/winroute
 go 1.24
 
 require (
+	github.com/spf13/cobra v1.9.1
 	golang.org/x/sys v0.35.0
 	golang.zx2c4.com/wireguard/windows v0.5.3
-    github.com/spf13/cobra v1.9.1
 )
 
 require (
