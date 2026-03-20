@@ -15,9 +15,10 @@ import (
 
 // interfaceCache 用于在单次操作中缓存接口信息，避免重复的API调用。
 type interfaceCache struct {
-	byLUID  map[winipcfg.LUID]*Interface
-	byIndex map[uint32]*Interface
-	byAlias map[string]*Interface
+	byLUID     map[winipcfg.LUID]*Interface
+	byIndex    map[uint32]*Interface
+	byAlias    map[string]*Interface
+	aliasCount map[string]int
 }
 
 // newInterfaceCache 通过查询系统API来构建接口信息的完整缓存。
@@ -29,9 +30,10 @@ func newInterfaceCache() (*interfaceCache, error) {
 	}
 
 	cache := &interfaceCache{
-		byLUID:  make(map[winipcfg.LUID]*Interface, len(adapters)),
-		byIndex: make(map[uint32]*Interface, len(adapters)),
-		byAlias: make(map[string]*Interface, len(adapters)),
+		byLUID:     make(map[winipcfg.LUID]*Interface, len(adapters)),
+		byIndex:    make(map[uint32]*Interface, len(adapters)),
+		byAlias:    make(map[string]*Interface, len(adapters)),
+		aliasCount: make(map[string]int, len(adapters)),
 	}
 
 	for _, adapter := range adapters {
@@ -46,10 +48,10 @@ func newInterfaceCache() (*interfaceCache, error) {
 
 		cache.byLUID[iface.LUID] = iface
 		cache.byIndex[iface.Index] = iface
-		// 别名可能不唯一，但为了方便查询，我们先简单处理。
-		// 在实际应用中，如果别名冲突，findInterface应该返回错误。
-		if _, exists := cache.byAlias[strings.ToLower(iface.Alias)]; !exists {
-			cache.byAlias[strings.ToLower(iface.Alias)] = iface
+		key := strings.ToLower(iface.Alias)
+		cache.aliasCount[key]++
+		if _, exists := cache.byAlias[key]; !exists {
+			cache.byAlias[key] = iface
 		}
 	}
 	return cache, nil

@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/bnkrr/winroute/internal/aliascheck"
 	"github.com/bnkrr/winroute/internal/routeops"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
@@ -24,35 +25,67 @@ var ErrAmbiguousMatch = errors.New("filter criteria matched multiple routes")
 
 // ---- GetRoutes: 查询路由 ----
 
-// FilterOption 是一个函数类型，用于定义对路由的过滤条件。
-type FilterOption func(r *Route) bool
+// FilterOption defines route filtering plus any pre-checks needed before route enumeration.
+type FilterOption interface {
+	match(r *Route) bool
+	validate(*interfaceCache) error
+}
+
+type filterOption struct {
+	matchFn    func(r *Route) bool
+	validateFn func(*interfaceCache) error
+}
+
+func (f filterOption) match(r *Route) bool {
+	return f.matchFn(r)
+}
+
+func (f filterOption) validate(cache *interfaceCache) error {
+	if f.validateFn == nil {
+		return nil
+	}
+	return f.validateFn(cache)
+}
 
 // WithDestinationPrefix 创建一个过滤器，仅保留目标网段完全匹配的路由。
 func WithDestinationPrefix(prefix netip.Prefix) FilterOption {
-	return func(r *Route) bool {
+	return filterOption{matchFn: func(r *Route) bool {
 		return r.Destination == prefix
+	}}
+}
+
+func validateUniqueAlias(cache *interfaceCache, alias string) error {
+	count := cache.aliasCount[strings.ToLower(alias)]
+	if err := aliascheck.ValidateUniqueAlias(alias, count); err != nil {
+		return fmt.Errorf("%w: %v", ErrAmbiguousMatch, err)
 	}
+	return nil
 }
 
 // WithInterfaceIndex 创建一个过滤器，仅保留通过指定接口索引的路由。
 func WithInterfaceIndex(index uint32) FilterOption {
-	return func(r *Route) bool {
+	return filterOption{matchFn: func(r *Route) bool {
 		return r.Interface.Index == index
-	}
+	}}
 }
 
 // WithInterfaceAlias 创建一个过滤器，仅保留通过指定接口别名（不区分大小写）的路由。
 func WithInterfaceAlias(alias string) FilterOption {
-	return func(r *Route) bool {
-		return strings.EqualFold(r.Interface.Alias, alias)
+	return filterOption{
+		matchFn: func(r *Route) bool {
+			return strings.EqualFold(r.Interface.Alias, alias)
+		},
+		validateFn: func(cache *interfaceCache) error {
+			return validateUniqueAlias(cache, alias)
+		},
 	}
 }
 
 // WithMetric 创建一个过滤器，仅保留Metric等于指定值的路由。
 func WithMetric(metric uint32) FilterOption {
-	return func(r *Route) bool {
+	return filterOption{matchFn: func(r *Route) bool {
 		return r.Metric == metric
-	}
+	}}
 }
 
 // GetRoutes 获取系统路由表，并可选择性地应用一个或多个过滤器。
@@ -61,6 +94,11 @@ func GetRoutes(filters ...FilterOption) ([]*Route, error) {
 	cache, err := newInterfaceCache()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build interface cache: %w", err)
+	}
+	for _, filter := range filters {
+		if err := filter.validate(cache); err != nil {
+			return nil, err
+		}
 	}
 
 	// 2. 从 winipcfg 获取基础路由表
@@ -94,7 +132,7 @@ func GetRoutes(filters ...FilterOption) ([]*Route, error) {
 		// 应用所有过滤器
 		matches := true
 		for _, filter := range filters {
-			if !filter(route) {
+			if !filter.match(route) {
 				matches = false
 				break
 			}

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/netip"
@@ -29,6 +30,9 @@ var stderr io.Writer = os.Stderr
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
+		if errors.Is(err, winroute.ErrAmbiguousMatch) {
+			fmt.Fprintln(stderr, err)
+		}
 		os.Exit(1)
 	}
 }
