@@ -8,7 +8,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$NextHop,
 
-    [string]$DestinationPrefix = "198.19.250.0/24"
+    [string]$DestinationPrefix = "198.19.250.0/24",
+
+    [uint32]$Metric = 777
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,7 +64,7 @@ function Assert-RouteAbsent {
 
     $result = Run-WRoute -Arguments @("get", "--destination", $Prefix)
     if (-not (Test-RouteAbsentOutput -Output $result.Output)) {
-        throw "Expected route $Prefix to be absent.`n$($result.Output)"
+        throw "Expected route $Prefix to be absent.`nMatching routes:`n$($result.Output)"
     }
 }
 
@@ -71,17 +73,58 @@ function Assert-RoutePresent {
 
     $result = Run-WRoute -Arguments @("get", "--destination", $Prefix)
     if ($result.Output -notmatch [Regex]::Escape($Prefix)) {
-        throw "Expected route $Prefix to be present.`n$($result.Output)"
+        throw "Expected route $Prefix to be present.`nMatching routes:`n$($result.Output)"
     }
+}
+
+function Write-MatchingRoutes {
+    param([string]$Prefix)
+
+    $result = Run-WRoute -Arguments @("get", "--destination", $Prefix) -AllowFailure
+    Write-Host "Current routes matching $Prefix :"
+    if ([string]::IsNullOrWhiteSpace($result.Output)) {
+        Write-Host "<no output>"
+    } else {
+        Write-Host $result.Output
+    }
+}
+
+function Remove-TestRoute {
+    param([switch]$Quiet)
+
+    if (-not $Quiet) {
+        Write-Host "Cleaning up test route if present ..."
+    }
+
+    Run-WRoute -Arguments @(
+        "delete-one",
+        "--destination", $DestinationPrefix,
+        "--next-hop", $NextHop,
+        "--if-index", "$InterfaceIndex"
+    ) -AllowFailure | Out-Null
+
+    Run-WRoute -Arguments @(
+        "delete",
+        "--destination", $DestinationPrefix,
+        "--if-index", "$InterfaceIndex",
+        "--metric", "$Metric"
+    ) -AllowFailure | Out-Null
 }
 
 Assert-Admin
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $script:WRoutePath = (Resolve-Path $WRoutePath).Path
+$routeAdded = $false
 
 Push-Location $repoRoot
 try {
+    Write-Host "Using wroute: $script:WRoutePath"
+    Write-Host "Interface index: $InterfaceIndex"
+    Write-Host "Next hop: $NextHop"
+    Write-Host "Destination prefix: $DestinationPrefix"
+    Write-Host "Metric: $Metric"
+
     Write-Host "Inspecting initial route state for $DestinationPrefix ..."
     Assert-RouteAbsent -Prefix $DestinationPrefix
 
@@ -91,8 +134,9 @@ try {
         "--destination", $DestinationPrefix,
         "--next-hop", $NextHop,
         "--if-index", "$InterfaceIndex",
-        "--metric", "777"
+        "--metric", "$Metric"
     ) | Out-Null
+    $routeAdded = $true
 
     Write-Host "Verifying route was added ..."
     Assert-RoutePresent -Prefix $DestinationPrefix
@@ -104,6 +148,7 @@ try {
         "--next-hop", $NextHop,
         "--if-index", "$InterfaceIndex"
     ) | Out-Null
+    $routeAdded = $false
 
     Write-Host "Verifying route was removed ..."
     Assert-RouteAbsent -Prefix $DestinationPrefix
@@ -114,8 +159,9 @@ try {
         "--destination", $DestinationPrefix,
         "--next-hop", $NextHop,
         "--if-index", "$InterfaceIndex",
-        "--metric", "777"
+        "--metric", "$Metric"
     ) | Out-Null
+    $routeAdded = $true
 
     Write-Host "Verifying route was added again ..."
     Assert-RoutePresent -Prefix $DestinationPrefix
@@ -126,12 +172,20 @@ try {
         "--destination", $DestinationPrefix,
         "--if-index", "$InterfaceIndex"
     ) | Out-Null
+    $routeAdded = $false
 
     Write-Host "Verifying route was removed again ..."
     Assert-RouteAbsent -Prefix $DestinationPrefix
 
     Write-Host "Integration test passed."
 }
+catch {
+    Write-MatchingRoutes -Prefix $DestinationPrefix
+    throw
+}
 finally {
+    if ($routeAdded) {
+        Remove-TestRoute -Quiet
+    }
     Pop-Location
 }
